@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"hash/crc32"
 	"io"
 	"os"
 
@@ -17,6 +18,7 @@ var (
 	OpcodeSync   [4]byte = [4]byte{ 'S', 'Y', 'N', 'C' }
 	OpcodeRead   [4]byte = [4]byte{ 'R', 'E', 'A', 'D' }
 	OpcodeCsum   [4]byte = [4]byte{ 'C', 'S', 'U', 'M' }
+	OpcodeCRC    [4]byte = [4]byte{ 'C', 'R', 'C', 'C' }
 	ResponseSync [4]byte = [4]byte{ 'P', 'I', 'C', 'O' }
 	ResponseOK   [4]byte = [4]byte{ 'O', 'K', 'O', 'K' }
 	ResponseErr  [4]byte = [4]byte{ 'E', 'R', 'R', '!' }
@@ -140,6 +142,44 @@ func (c *CsumCommand) Execute(rw io.ReadWriter) error {
 	return nil
 }
 
+type CRCCommand struct {
+	Addr uint32
+	Len  uint32
+	CRC uint32
+}
+
+func (c *CRCCommand) Execute(rw io.ReadWriter) error {
+	// Re-use for command and response.
+	buf := make([]byte, len(OpcodeCRC) + 4 + 4)
+
+	copy(buf[0:], OpcodeCRC[:])
+	binary.LittleEndian.PutUint32(buf[4:], c.Addr)
+	binary.LittleEndian.PutUint32(buf[8:], c.Len)
+
+	n, err := rw.Write(buf)
+	if err != nil {
+		return err
+	} else if n != len(OpcodeCRC) + 4 + 4 {
+		return fmt.Errorf("unexpectead write length: %v", n)
+	}
+
+	// Re-slice to single arg
+	buf = buf[:len(ResponseOK) + 4]
+
+	n, err = rw.Read(buf)
+	if err != nil {
+		return err
+	}
+
+	if !bytes.HasPrefix(buf, ResponseOK[:]) {
+		return fmt.Errorf("received error response")
+	}
+
+	c.CRC = binary.LittleEndian.Uint32(buf[4:])
+
+	return nil
+}
+
 func run() error {
 	options := tty.OpenOptions{
 		PortName: "/dev/ttyUSB0",
@@ -187,6 +227,7 @@ func run() error {
 
 	fmt.Println(hex.Dump(rc.Data))
 	fmt.Printf("Calc CSUM: 0x%08x\n", calculateChecksum(rc.Data))
+	fmt.Printf("Calc CRC:  0x%08x\n", crc32.ChecksumIEEE(rc.Data))
 
 	cc := &CsumCommand{
 		Addr: rc.Addr,
@@ -198,7 +239,19 @@ func run() error {
 		return err
 	}
 
-	fmt.Printf("Returned CSUM: 0x%08x\n", cc.Csum)
+	fmt.Printf("Resp CSUM: 0x%08x\n", cc.Csum)
+
+	cr := &CRCCommand{
+		Addr: rc.Addr,
+		Len:  rc.Len,
+	}
+
+	err = cr.Execute(port)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("Resp CRC:  0x%08x\n", cr.CRC)
 
 	return nil
 }
