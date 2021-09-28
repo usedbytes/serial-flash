@@ -16,6 +16,7 @@ import (
 var (
 	OpcodeSync   [4]byte = [4]byte{ 'S', 'Y', 'N', 'C' }
 	OpcodeRead   [4]byte = [4]byte{ 'R', 'E', 'A', 'D' }
+	OpcodeCsum   [4]byte = [4]byte{ 'C', 'S', 'U', 'M' }
 	ResponseSync [4]byte = [4]byte{ 'P', 'I', 'C', 'O' }
 	ResponseOK   [4]byte = [4]byte{ 'O', 'K', 'O', 'K' }
 	ResponseErr  [4]byte = [4]byte{ 'E', 'R', 'R', '!' }
@@ -88,6 +89,57 @@ func (c *ReadCommand) Execute(rw io.ReadWriter) error {
 	return nil
 }
 
+type CsumCommand struct {
+	Addr uint32
+	Len  uint32
+	Csum uint32
+}
+
+func calculateChecksum(data []byte) uint32 {
+	alignedLen := ((len(data) + 3) / 4) * 4
+	buf := make([]byte, alignedLen)
+	copy(buf, data)
+
+	result := uint32(0)
+	for i := 0; i < alignedLen; i+=4 {
+		result += binary.LittleEndian.Uint32(buf[i:])
+	}
+
+	return result
+}
+
+func (c *CsumCommand) Execute(rw io.ReadWriter) error {
+	// Re-use for command and response.
+	buf := make([]byte, len(OpcodeCsum) + 4 + 4)
+
+	copy(buf[0:], OpcodeCsum[:])
+	binary.LittleEndian.PutUint32(buf[4:], c.Addr)
+	binary.LittleEndian.PutUint32(buf[8:], c.Len)
+
+	n, err := rw.Write(buf)
+	if err != nil {
+		return err
+	} else if n != len(OpcodeCsum) + 4 + 4 {
+		return fmt.Errorf("unexpectead write length: %v", n)
+	}
+
+	// Re-slice to single arg
+	buf = buf[:len(ResponseOK) + 4]
+
+	n, err = rw.Read(buf)
+	if err != nil {
+		return err
+	}
+
+	if !bytes.HasPrefix(buf, ResponseOK[:]) {
+		return fmt.Errorf("received error response")
+	}
+
+	c.Csum = binary.LittleEndian.Uint32(buf[4:])
+
+	return nil
+}
+
 func run() error {
 	options := tty.OpenOptions{
 		PortName: "/dev/ttyUSB0",
@@ -123,7 +175,7 @@ func run() error {
 
 	rc := &ReadCommand{
 		Addr: 0x10000000,
-		Len:  256,
+		Len:  240,
 	}
 
 	err = rc.Execute(port)
@@ -132,7 +184,21 @@ func run() error {
 	}
 
 	fmt.Printf("0x%8x, %d bytes\n", rc.Addr, rc.Len)
+
 	fmt.Println(hex.Dump(rc.Data))
+	fmt.Printf("Calc CSUM: 0x%08x\n", calculateChecksum(rc.Data))
+
+	cc := &CsumCommand{
+		Addr: rc.Addr,
+		Len:  rc.Len,
+	}
+
+	err = cc.Execute(port)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("Returned CSUM: 0x%08x\n", cc.Csum)
 
 	return nil
 }
