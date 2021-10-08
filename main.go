@@ -40,7 +40,7 @@ func (c *SyncCommand) Execute(rw io.ReadWriter) error {
 		return fmt.Errorf("unexpectead write length: %v", n)
 	}
 
-	n, err = rw.Read(resp[:])
+	n, err = io.ReadAtLeast(rw, resp[:], len(ResponseSync))
 	if err != nil {
 		return err
 	}
@@ -76,7 +76,7 @@ func (c *ReadCommand) Execute(rw io.ReadWriter) error {
 	// Re-slice to full size
 	buf = buf[:cap(buf)]
 
-	n, err = rw.Read(buf)
+	n, err = io.ReadFull(rw, buf)
 	if err != nil {
 		return err
 	}
@@ -128,7 +128,7 @@ func (c *CsumCommand) Execute(rw io.ReadWriter) error {
 	// Re-slice to single arg
 	buf = buf[:len(ResponseOK) + 4]
 
-	n, err = rw.Read(buf)
+	n, err = io.ReadFull(rw, buf)
 	if err != nil {
 		return err
 	}
@@ -166,7 +166,7 @@ func (c *CRCCommand) Execute(rw io.ReadWriter) error {
 	// Re-slice to single arg
 	buf = buf[:len(ResponseOK) + 4]
 
-	n, err = rw.Read(buf)
+	n, err = io.ReadFull(rw, buf)
 	if err != nil {
 		return err
 	}
