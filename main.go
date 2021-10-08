@@ -9,7 +9,9 @@ import (
 	"fmt"
 	"hash/crc32"
 	"io"
+	"net"
 	"os"
+	"strings"
 
 	tty "github.com/jacobsa/go-serial/serial"
 )
@@ -181,25 +183,49 @@ func (c *CRCCommand) Execute(rw io.ReadWriter) error {
 }
 
 func run() error {
-	options := tty.OpenOptions{
-		PortName: "/dev/ttyUSB0",
-		BaudRate: 115200,
-		DataBits: 8,
-		StopBits: 1,
-		MinimumReadSize: 1,
-		InterCharacterTimeout: 100,
+	if len(os.Args) < 2 {
+		return fmt.Errorf("Usage: %s PORT", os.Args[0])
 	}
 
-	port, err := tty.Open(options)
-	if err != nil {
-		return fmt.Errorf("tty.Open: %v", err)
+	var rw io.ReadWriter
+	var err error
+
+	port := os.Args[1]
+	if strings.HasPrefix(port, "tcp:") {
+		conn, err := net.Dial("tcp", port[len("tcp:"):])
+		if err != nil {
+			return fmt.Errorf("net.Dial %s: %v", port[len("tcp:"):], err)
+		}
+		defer conn.Close()
+
+		fmt.Println("Opened connection to", port[len("tcp:"):])
+
+		rw = conn
+	} else {
+		options := tty.OpenOptions{
+			PortName: port,
+			BaudRate: 115200,
+			DataBits: 8,
+			StopBits: 1,
+			MinimumReadSize: 1,
+			InterCharacterTimeout: 100,
+		}
+
+		ser, err := tty.Open(options)
+		if err != nil {
+			return fmt.Errorf("tty.Open %s: %v", port, err)
+		}
+		defer ser.Close()
+
+		fmt.Println("Opened", port)
+
+		rw = ser
 	}
-	defer port.Close()
 
 	// Try and sync
 	for i := 0; i < 5; i++ {
 		var sc SyncCommand
-		err = (&sc).Execute(port)
+		err = (&sc).Execute(rw)
 		if err != nil {
 			fmt.Println("sync:", err)
 		} else {
@@ -218,7 +244,7 @@ func run() error {
 		Len:  240,
 	}
 
-	err = rc.Execute(port)
+	err = rc.Execute(rw)
 	if err != nil {
 		return err
 	}
@@ -234,7 +260,7 @@ func run() error {
 		Len:  rc.Len,
 	}
 
-	err = cc.Execute(port)
+	err = cc.Execute(rw)
 	if err != nil {
 		return err
 	}
@@ -246,7 +272,7 @@ func run() error {
 		Len:  rc.Len,
 	}
 
-	err = cr.Execute(port)
+	err = cr.Execute(rw)
 	if err != nil {
 		return err
 	}
