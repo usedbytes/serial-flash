@@ -24,6 +24,7 @@ var (
 	OpcodeCRC     [4]byte = [4]byte{ 'C', 'R', 'C', 'C' }
 	OpcodeErase   [4]byte = [4]byte{ 'E', 'R', 'A', 'S' }
 	OpcodeWrite   [4]byte = [4]byte{ 'W', 'R', 'I', 'T' }
+	OpcodeGo      [4]byte = [4]byte{ 'G', 'O', 'G', 'O' }
 	ResponseSync  [4]byte = [4]byte{ 'P', 'I', 'C', 'O' }
 	ResponseOK    [4]byte = [4]byte{ 'O', 'K', 'O', 'K' }
 	ResponseErr   [4]byte = [4]byte{ 'E', 'R', 'R', '!' }
@@ -263,6 +264,28 @@ func (c *WriteCommand) Execute(rw io.ReadWriter) error {
 	return nil
 }
 
+type GoCommand struct {
+	Addr uint32
+}
+
+func (c *GoCommand) Execute(rw io.ReadWriter) error {
+	buf := make([]byte, len(OpcodeGo) + 4)
+
+	copy(buf[0:], OpcodeGo[:])
+	binary.LittleEndian.PutUint32(buf[4:], c.Addr)
+
+	n, err := rw.Write(buf)
+	if err != nil {
+		return err
+	} else if n != len(buf) {
+		return fmt.Errorf("unexpectead write length: %v", n)
+	}
+
+	// Fire and forget
+
+	return nil
+}
+
 func align(val, to uint32) uint32 {
 	return (val + (to - 1)) & ^(to - 1)
 }
@@ -398,6 +421,16 @@ func run() error {
 			return err
 		}
 		fmt.Println(hex.Dump(rc.Data))
+	}
+
+	gc := &GoCommand{
+		Addr: uint32(addr),
+	}
+
+	fmt.Println("Jumping...")
+	err = gc.Execute(rw)
+	if err != nil {
+		return err
 	}
 
 	return nil
