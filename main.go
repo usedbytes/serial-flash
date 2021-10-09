@@ -9,11 +9,10 @@ import (
 	"fmt"
 	"hash/crc32"
 	"io"
-	"math/rand"
 	"net"
 	"os"
+	"strconv"
 	"strings"
-	"time"
 
 	tty "github.com/jacobsa/go-serial/serial"
 )
@@ -233,12 +232,14 @@ func (c *WriteCommand) Execute(rw io.ReadWriter) error {
 	binary.LittleEndian.PutUint32(buf[8:], c.Len)
 	copy(buf[12:], c.Data)
 
+	fmt.Println("writing")
 	n, err := rw.Write(buf)
 	if err != nil {
 		return err
 	} else if n != len(buf) {
 		return fmt.Errorf("unexpectead write length: %v", n)
 	}
+	fmt.Println("writing done")
 
 	// Re-slice to single response arg
 	buf = buf[:len(ResponseOK) + 4]
@@ -262,9 +263,17 @@ func (c *WriteCommand) Execute(rw io.ReadWriter) error {
 	return nil
 }
 
+func align(val, to uint32) uint32 {
+	return (val + (to - 1)) & ^(to - 1)
+}
+
 func run() error {
 	if len(os.Args) < 2 {
 		return fmt.Errorf("Usage: %s PORT", os.Args[0])
+	}
+
+	if len(os.Args) < 4 {
+		return fmt.Errorf("Usage: %s PORT BINARY ADDR", os.Args[0])
 	}
 
 	var rw io.ReadWriter
@@ -302,6 +311,27 @@ func run() error {
 		rw = ser
 	}
 
+	fname := os.Args[2]
+	str_addr := os.Args[3]
+
+	f, err := os.Open(fname)
+	if err != nil {
+		return err
+	}
+
+	data, err := io.ReadAll(f)
+	if err != nil {
+		return err
+	}
+
+	pad := align(uint32(len(data)), 256) - uint32(len(data))
+	data = append(data, make([]byte, pad)...)
+
+	addr, err := strconv.ParseUint(str_addr, 0, 32)
+	if err != nil {
+		return err
+	}
+
 	// Try and sync
 	for i := 0; i < 5; i++ {
 		var sc SyncCommand
@@ -320,39 +350,9 @@ func run() error {
 		return err
 	}
 
-	rc := &ReadCommand{
-		Addr: 0x10000000 + (1024 * 1024),
-		Len:  4096,
-	}
-
 	ec := &EraseCommand{
-		Addr: rc.Addr,
-		Len: rc.Len,
-	}
-
-	wc := &WriteCommand{
-		Addr: ec.Addr,
-		Len: rc.Len,
-		Data: make([]byte, rc.Len),
-	}
-
-
-	rand.Seed(time.Now().UnixNano())
-	n, err := rand.Read(wc.Data)
-	if n != len(wc.Data) {
-		return fmt.Errorf("unexpected random len %v", n)
-	} else if err != nil {
-		return err
-	}
-
-	cc := &CsumCommand{
-		Addr: rc.Addr,
-		Len:  rc.Len,
-	}
-
-	cr := &CRCCommand{
-		Addr: rc.Addr,
-		Len:  rc.Len,
+		Addr: uint32(addr),
+		Len: align(uint32(len(data)), 4096),
 	}
 
 	fmt.Println("Erasing...");
@@ -362,39 +362,43 @@ func run() error {
 		return err
 	}
 
-	fmt.Println("Writing...");
-	err = wc.Execute(rw)
-	fmt.Println("Done...");
-	if err != nil {
-		return err
+	chunkLen := uint32(4096)
+	for start := uint32(0); start < uint32(len(data)); start += chunkLen {
+		end := start + chunkLen
+		if end > uint32(len(data)) {
+			end = uint32(len(data))
+		}
+
+		wc := &WriteCommand{
+			Addr: uint32(addr) + start,
+			Len: end - start,
+			Data: data[start:end],
+		}
+		fmt.Printf("Writing %d bytes to 0x%08x\n", wc.Len, wc.Addr);
+		err = wc.Execute(rw)
+		fmt.Println("Done...");
+		if err != nil {
+			return err
+		}
 	}
 
-	fmt.Println("Reading...");
-	err = rc.Execute(rw)
-	fmt.Println("Done...");
-	if err != nil {
-		return err
+	for start := uint32(0); start < uint32(len(data)); start += chunkLen {
+		end := start + chunkLen
+		if end > uint32(len(data)) {
+			end = uint32(len(data))
+		}
+
+		rc := &ReadCommand{
+			Addr: uint32(addr) + start,
+			Len: end - start,
+		}
+		fmt.Printf("Reading %d bytes from 0x%08x\n", rc.Len, rc.Addr);
+		err = rc.Execute(rw)
+		if err != nil {
+			return err
+		}
+		fmt.Println(hex.Dump(rc.Data))
 	}
-
-	fmt.Printf("0x%8x, %d bytes\n", rc.Addr, rc.Len)
-
-	fmt.Println(hex.Dump(rc.Data))
-	fmt.Printf("Calc CSUM: 0x%08x\n", calculateChecksum(rc.Data))
-	fmt.Printf("Calc CRC:  0x%08x\n", crc32.ChecksumIEEE(rc.Data))
-
-	err = cc.Execute(rw)
-	if err != nil {
-		return err
-	}
-
-	fmt.Printf("Resp CSUM: 0x%08x\n", cc.Csum)
-
-	err = cr.Execute(rw)
-	if err != nil {
-		return err
-	}
-
-	fmt.Printf("Resp CRC:  0x%08x\n", cr.CRC)
 
 	return nil
 }
