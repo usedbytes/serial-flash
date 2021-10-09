@@ -9,21 +9,25 @@ import (
 	"fmt"
 	"hash/crc32"
 	"io"
+	"math/rand"
 	"net"
 	"os"
 	"strings"
+	"time"
 
 	tty "github.com/jacobsa/go-serial/serial"
 )
 
 var (
-	OpcodeSync   [4]byte = [4]byte{ 'S', 'Y', 'N', 'C' }
-	OpcodeRead   [4]byte = [4]byte{ 'R', 'E', 'A', 'D' }
-	OpcodeCsum   [4]byte = [4]byte{ 'C', 'S', 'U', 'M' }
-	OpcodeCRC    [4]byte = [4]byte{ 'C', 'R', 'C', 'C' }
-	ResponseSync [4]byte = [4]byte{ 'P', 'I', 'C', 'O' }
-	ResponseOK   [4]byte = [4]byte{ 'O', 'K', 'O', 'K' }
-	ResponseErr  [4]byte = [4]byte{ 'E', 'R', 'R', '!' }
+	OpcodeSync    [4]byte = [4]byte{ 'S', 'Y', 'N', 'C' }
+	OpcodeRead    [4]byte = [4]byte{ 'R', 'E', 'A', 'D' }
+	OpcodeCsum    [4]byte = [4]byte{ 'C', 'S', 'U', 'M' }
+	OpcodeCRC     [4]byte = [4]byte{ 'C', 'R', 'C', 'C' }
+	OpcodeErase   [4]byte = [4]byte{ 'E', 'R', 'A', 'S' }
+	OpcodeWrite   [4]byte = [4]byte{ 'W', 'R', 'I', 'T' }
+	ResponseSync  [4]byte = [4]byte{ 'P', 'I', 'C', 'O' }
+	ResponseOK    [4]byte = [4]byte{ 'O', 'K', 'O', 'K' }
+	ResponseErr   [4]byte = [4]byte{ 'E', 'R', 'R', '!' }
 )
 
 type SyncCommand struct {
@@ -182,6 +186,82 @@ func (c *CRCCommand) Execute(rw io.ReadWriter) error {
 	return nil
 }
 
+type EraseCommand struct {
+	Addr uint32
+	Len  uint32
+}
+
+func (c *EraseCommand) Execute(rw io.ReadWriter) error {
+	// Re-use for command and response.
+	buf := make([]byte, len(OpcodeErase) + 4 + 4)
+
+	copy(buf[0:], OpcodeErase[:])
+	binary.LittleEndian.PutUint32(buf[4:], c.Addr)
+	binary.LittleEndian.PutUint32(buf[8:], c.Len)
+
+	n, err := rw.Write(buf)
+	if err != nil {
+		return err
+	} else if n != len(OpcodeErase) + 4 + 4 {
+		return fmt.Errorf("unexpectead write length: %v", n)
+	}
+
+	n, err = io.ReadAtLeast(rw, buf[:], len(ResponseOK))
+	if err != nil {
+		return err
+	}
+
+	if !bytes.HasPrefix(buf, ResponseOK[:]) {
+		return fmt.Errorf("received error response")
+	}
+
+	return nil
+}
+
+type WriteCommand struct {
+	Addr uint32
+	Len  uint32
+	Data []byte
+}
+
+func (c *WriteCommand) Execute(rw io.ReadWriter) error {
+	// Re-use for command and response.
+	buf := make([]byte, len(OpcodeWrite) + 4 + 4 + len(c.Data))
+
+	copy(buf[0:], OpcodeWrite[:])
+	binary.LittleEndian.PutUint32(buf[4:], c.Addr)
+	binary.LittleEndian.PutUint32(buf[8:], c.Len)
+	copy(buf[12:], c.Data)
+
+	n, err := rw.Write(buf)
+	if err != nil {
+		return err
+	} else if n != len(buf) {
+		return fmt.Errorf("unexpectead write length: %v", n)
+	}
+
+	// Re-slice to single response arg
+	buf = buf[:len(ResponseOK) + 4]
+
+	n, err = io.ReadFull(rw, buf)
+	if err != nil {
+		return err
+	}
+
+	if !bytes.HasPrefix(buf, ResponseOK[:]) {
+		return fmt.Errorf("received error response")
+	}
+
+	response_crc := binary.LittleEndian.Uint32(buf[4:])
+	calc_crc := crc32.ChecksumIEEE(c.Data)
+
+	if response_crc != calc_crc {
+		return fmt.Errorf("CRC mismatch: 0x%08x vs 0x%08x", response_crc, calc_crc)
+	}
+
+	return nil
+}
+
 func run() error {
 	if len(os.Args) < 2 {
 		return fmt.Errorf("Usage: %s PORT", os.Args[0])
@@ -225,6 +305,7 @@ func run() error {
 	// Try and sync
 	for i := 0; i < 5; i++ {
 		var sc SyncCommand
+		fmt.Println("sync", i)
 		err = (&sc).Execute(rw)
 		if err != nil {
 			fmt.Println("sync:", err)
@@ -234,17 +315,63 @@ func run() error {
 		}
 	}
 
-	// Bail out
+	// Sync failed. Bail out
 	if err != nil {
 		return err
 	}
 
 	rc := &ReadCommand{
-		Addr: 0x10000000,
-		Len:  240,
+		Addr: 0x10000000 + (1024 * 1024),
+		Len:  4096,
 	}
 
+	ec := &EraseCommand{
+		Addr: rc.Addr,
+		Len: rc.Len,
+	}
+
+	wc := &WriteCommand{
+		Addr: ec.Addr,
+		Len: rc.Len,
+		Data: make([]byte, rc.Len),
+	}
+
+
+	rand.Seed(time.Now().UnixNano())
+	n, err := rand.Read(wc.Data)
+	if n != len(wc.Data) {
+		return fmt.Errorf("unexpected random len %v", n)
+	} else if err != nil {
+		return err
+	}
+
+	cc := &CsumCommand{
+		Addr: rc.Addr,
+		Len:  rc.Len,
+	}
+
+	cr := &CRCCommand{
+		Addr: rc.Addr,
+		Len:  rc.Len,
+	}
+
+	fmt.Println("Erasing...");
+	err = ec.Execute(rw)
+	fmt.Println("Done...");
+	if err != nil {
+		return err
+	}
+
+	fmt.Println("Writing...");
+	err = wc.Execute(rw)
+	fmt.Println("Done...");
+	if err != nil {
+		return err
+	}
+
+	fmt.Println("Reading...");
 	err = rc.Execute(rw)
+	fmt.Println("Done...");
 	if err != nil {
 		return err
 	}
@@ -255,22 +382,12 @@ func run() error {
 	fmt.Printf("Calc CSUM: 0x%08x\n", calculateChecksum(rc.Data))
 	fmt.Printf("Calc CRC:  0x%08x\n", crc32.ChecksumIEEE(rc.Data))
 
-	cc := &CsumCommand{
-		Addr: rc.Addr,
-		Len:  rc.Len,
-	}
-
 	err = cc.Execute(rw)
 	if err != nil {
 		return err
 	}
 
 	fmt.Printf("Resp CSUM: 0x%08x\n", cc.Csum)
-
-	cr := &CRCCommand{
-		Addr: rc.Addr,
-		Len:  rc.Len,
-	}
 
 	err = cr.Execute(rw)
 	if err != nil {
