@@ -5,7 +5,6 @@ package main
 import (
 	"bytes"
 	"encoding/binary"
-	"encoding/hex"
 	"fmt"
 	"hash/crc32"
 	"io"
@@ -428,14 +427,6 @@ func run() error {
 		return err
 	}
 
-	pad := align(uint32(len(data)), 256) - uint32(len(data))
-	data = append(data, make([]byte, pad)...)
-
-	addr, err := strconv.ParseUint(str_addr, 0, 32)
-	if err != nil {
-		return err
-	}
-
 	// Try and sync
 	for i := 0; i < 5; i++ {
 		var sc SyncCommand
@@ -454,9 +445,36 @@ func run() error {
 		return err
 	}
 
+	ic := &InfoCommand{ }
+
+	fmt.Println("Get info...");
+	err = ic.Execute(rw)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("FlashAddr:  0x%08x\n", ic.FlashAddr)
+	fmt.Printf("FlashSize:  0x%08x\n", ic.FlashSize)
+	fmt.Printf("EraseSize:  0x%08x\n", ic.EraseSize)
+	fmt.Printf("WriteSize:  0x%08x\n", ic.WriteSize)
+	fmt.Printf("MaxDataLen: 0x%08x\n", ic.MaxDataLen)
+
+	pad := align(uint32(len(data)), ic.WriteSize) - uint32(len(data))
+	data = append(data, make([]byte, pad)...)
+
+	addr64, err := strconv.ParseUint(str_addr, 0, 32)
+	if err != nil {
+		return err
+	}
+
+	addr := uint32(addr64)
+
+	if (addr < ic.FlashAddr) || (addr + uint32(len(data)) > ic.FlashAddr + ic.FlashSize) {
+		return fmt.Errorf("image of %d bytes doesn't fit in flash at 0x%08x", len(data), uint32(addr))
+	}
+
 	ec := &EraseCommand{
-		Addr: uint32(addr),
-		Len: align(uint32(len(data)), 4096),
+		Addr: addr,
+		Len: align(uint32(len(data)), ic.EraseSize),
 	}
 
 	fmt.Println("Erasing...");
@@ -466,7 +484,7 @@ func run() error {
 		return err
 	}
 
-	chunkLen := uint32(4096)
+	chunkLen := uint32(ic.MaxDataLen)
 	for start := uint32(0); start < uint32(len(data)); start += chunkLen {
 		end := start + chunkLen
 		if end > uint32(len(data)) {
@@ -474,7 +492,7 @@ func run() error {
 		}
 
 		wc := &WriteCommand{
-			Addr: uint32(addr) + start,
+			Addr: addr + start,
 			Len: end - start,
 			Data: data[start:end],
 		}
@@ -486,26 +504,20 @@ func run() error {
 		}
 	}
 
-	for start := uint32(0); start < uint32(len(data)); start += chunkLen {
-		end := start + chunkLen
-		if end > uint32(len(data)) {
-			end = uint32(len(data))
-		}
+	sc := &SealCommand{
+		Addr: addr,
+		Len: uint32(len(data)),
+		CRC: crc32.ChecksumIEEE(data),
+	}
 
-		rc := &ReadCommand{
-			Addr: uint32(addr) + start,
-			Len: end - start,
-		}
-		fmt.Printf("Reading %d bytes from 0x%08x\n", rc.Len, rc.Addr);
-		err = rc.Execute(rw)
-		if err != nil {
-			return err
-		}
-		fmt.Println(hex.Dump(rc.Data))
+	fmt.Println("Sealing...")
+	err = sc.Execute(rw)
+	if err != nil {
+		return err
 	}
 
 	gc := &GoCommand{
-		Addr: uint32(addr),
+		Addr: addr,
 	}
 
 	fmt.Println("Jumping...")
