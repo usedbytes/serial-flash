@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -21,17 +22,47 @@ func align(val, to uint32) uint32 {
 	return (val + (to - 1)) & ^(to - 1)
 }
 
+func usage() error {
+	return fmt.Errorf("Usage: %s PORT FILE [BASE]", os.Args[0])
+}
+
 func run() error {
-	if len(os.Args) < 2 {
-		return fmt.Errorf("Usage: %s PORT", os.Args[0])
+	if len(os.Args) < 3 {
+		return usage()
 	}
 
-	if len(os.Args) < 4 {
-		return fmt.Errorf("Usage: %s PORT BINARY ADDR", os.Args[0])
+	var img *program.Image
+	var err error
+
+	fname := os.Args[2]
+	if filepath.Ext(fname) == ".elf" {
+		if len(os.Args) > 3 {
+			fmt.Println("base address can't be specified for ELF files")
+			return usage()
+		}
+
+		img, err = program.LoadELF(fname, program.DefaultInFlashFunc)
+		if err != nil {
+			return fmt.Errorf("loading ELF %v: %v", fname, err)
+		}
+	} else {
+		if len(os.Args) < 4 {
+			fmt.Println("base address mustt be specified for binary files")
+			return usage()
+		}
+
+		addr64, err := strconv.ParseUint(os.Args[3], 0, 32)
+		if err != nil {
+			return fmt.Errorf("parsing address %v: %v", os.Args[3], err)
+		}
+
+		img, err = program.LoadBin(fname, uint32(addr64))
+		if err != nil {
+			return fmt.Errorf("loading binary %v: %v", fname, err)
+		}
 	}
 
 	var rw io.ReadWriter
-	var err error
 
 	port := os.Args[1]
 	if strings.HasPrefix(port, "tcp:") {
@@ -63,29 +94,6 @@ func run() error {
 		fmt.Println("Opened", port)
 
 		rw = ser
-	}
-
-	fname := os.Args[2]
-	str_addr := os.Args[3]
-
-	addr64, err := strconv.ParseUint(str_addr, 0, 32)
-	if err != nil {
-		return fmt.Errorf("parsing address %v: %v", str_addr, err)
-	}
-
-	f, err := os.Open(fname)
-	if err != nil {
-		return err
-	}
-
-	data, err := io.ReadAll(f)
-	if err != nil {
-		return err
-	}
-
-	img := &program.Image{
-		Addr: uint32(addr64),
-		Data: data,
 	}
 
 	prog := make(chan program.ProgressReport)
@@ -122,11 +130,12 @@ func run() error {
 	}()
 
 	err = program.Program(rw, img, prog)
+	<-done
+
 	if err != nil {
 		return err
 	}
 
-	<-done
 
 	gc := &protocol.GoCommand{
 		Addr: img.Addr,
