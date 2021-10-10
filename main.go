@@ -77,7 +77,7 @@ func (c *ReadCommand) Execute(rw io.ReadWriter) error {
 	if err != nil {
 		return err
 	} else if n != len(OpcodeRead) + 4 + 4 {
-		return fmt.Errorf("unexpectead write length: %v", n)
+		return fmt.Errorf("unexpected write length: %v", n)
 	}
 
 	// Re-slice to full size
