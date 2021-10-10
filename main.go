@@ -24,6 +24,7 @@ var (
 	OpcodeCRC     [4]byte = [4]byte{ 'C', 'R', 'C', 'C' }
 	OpcodeErase   [4]byte = [4]byte{ 'E', 'R', 'A', 'S' }
 	OpcodeWrite   [4]byte = [4]byte{ 'W', 'R', 'I', 'T' }
+	OpcodeSeal    [4]byte = [4]byte{ 'S', 'E', 'A', 'L' }
 	OpcodeGo      [4]byte = [4]byte{ 'G', 'O', 'G', 'O' }
 	ResponseSync  [4]byte = [4]byte{ 'P', 'I', 'C', 'O' }
 	ResponseOK    [4]byte = [4]byte{ 'O', 'K', 'O', 'K' }
@@ -259,6 +260,43 @@ func (c *WriteCommand) Execute(rw io.ReadWriter) error {
 
 	if response_crc != calc_crc {
 		return fmt.Errorf("CRC mismatch: 0x%08x vs 0x%08x", response_crc, calc_crc)
+	}
+
+	return nil
+}
+
+type SealCommand struct {
+	Addr uint32
+	Len  uint32
+	CRC uint32
+}
+
+func (c *SealCommand) Execute(rw io.ReadWriter) error {
+	// Re-use for command and response.
+	buf := make([]byte, len(OpcodeSeal) + 4 + 4 + 4)
+
+	copy(buf[0:], OpcodeSeal[:])
+	binary.LittleEndian.PutUint32(buf[4:], c.Addr)
+	binary.LittleEndian.PutUint32(buf[8:], c.Len)
+	binary.LittleEndian.PutUint32(buf[12:], c.CRC)
+
+	n, err := rw.Write(buf)
+	if err != nil {
+		return err
+	} else if n != len(OpcodeSeal) + 4 + 4 + 4 {
+		return fmt.Errorf("unexpectead write length: %v", n)
+	}
+
+	// Re-slice to single arg
+	buf = buf[:len(ResponseOK)]
+
+	n, err = io.ReadFull(rw, buf)
+	if err != nil {
+		return err
+	}
+
+	if !bytes.HasPrefix(buf, ResponseOK[:]) {
+		return fmt.Errorf("received error response")
 	}
 
 	return nil
