@@ -26,6 +26,7 @@ var (
 	OpcodeWrite   [4]byte = [4]byte{ 'W', 'R', 'I', 'T' }
 	OpcodeSeal    [4]byte = [4]byte{ 'S', 'E', 'A', 'L' }
 	OpcodeGo      [4]byte = [4]byte{ 'G', 'O', 'G', 'O' }
+	OpcodeInfo    [4]byte = [4]byte{ 'I', 'N', 'F', 'O' }
 	ResponseSync  [4]byte = [4]byte{ 'P', 'I', 'C', 'O' }
 	ResponseOK    [4]byte = [4]byte{ 'O', 'K', 'O', 'K' }
 	ResponseErr   [4]byte = [4]byte{ 'E', 'R', 'R', '!' }
@@ -320,6 +321,48 @@ func (c *GoCommand) Execute(rw io.ReadWriter) error {
 	}
 
 	// Fire and forget
+
+	return nil
+}
+
+type InfoCommand struct {
+	FlashAddr  uint32
+	FlashSize  uint32
+	EraseSize  uint32
+	WriteSize  uint32
+	MaxDataLen uint32
+}
+
+func (c *InfoCommand) Execute(rw io.ReadWriter) error {
+	// Re-use for command and response.
+	buf := make([]byte, len(OpcodeInfo), len(OpcodeInfo) + (4 * 5))
+
+	copy(buf[0:], OpcodeInfo[:])
+
+	n, err := rw.Write(buf)
+	if err != nil {
+		return err
+	} else if n != len(OpcodeInfo) {
+		return fmt.Errorf("unexpectead write length: %v", n)
+	}
+
+	// Re-slice to response args
+	buf = buf[:len(ResponseOK) + (4 * 5)]
+
+	n, err = io.ReadFull(rw, buf)
+	if err != nil {
+		return err
+	}
+
+	if !bytes.HasPrefix(buf, ResponseOK[:]) {
+		return fmt.Errorf("received error response")
+	}
+
+	c.FlashAddr = binary.LittleEndian.Uint32(buf[4:])
+	c.FlashSize = binary.LittleEndian.Uint32(buf[8:])
+	c.EraseSize = binary.LittleEndian.Uint32(buf[12:])
+	c.WriteSize = binary.LittleEndian.Uint32(buf[16:])
+	c.MaxDataLen = binary.LittleEndian.Uint32(buf[20:])
 
 	return nil
 }
