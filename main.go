@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	tty "github.com/jacobsa/go-serial/serial"
+	"github.com/cheggaaa/pb"
 
 	"github.com/usedbytes/serial-flash/protocol"
 	"github.com/usedbytes/serial-flash/program"
@@ -88,17 +89,44 @@ func run() error {
 	}
 
 	prog := make(chan program.ProgressReport)
+	done := make(chan bool)
 
 	go func() {
+		var last program.ProgressReport
+		var bar *pb.ProgressBar
+
 		for p := range prog {
-			fmt.Println(p.Stage, p.Progress, p.Max)
+			if p.Stage != last.Stage {
+				if bar != nil {
+					bar.Finish()
+				}
+
+				fmt.Println(p.Stage + ":")
+				bar = pb.New(p.Max)
+				bar.ShowSpeed = true
+				bar.SetMaxWidth(80)
+				//bar.Prefix(p.Stage)
+				bar.Start()
+			}
+
+			bar.Set(p.Progress)
+			bar.Update()
+			last = p
 		}
+
+		if bar != nil {
+			bar.Finish()
+		}
+
+		done <- true
 	}()
 
 	err = program.Program(rw, img, prog)
 	if err != nil {
 		return err
 	}
+
+	<-done
 
 	gc := &protocol.GoCommand{
 		Addr: img.Addr,
