@@ -25,6 +25,30 @@ var (
 	ResponseErr   [4]byte = [4]byte{ 'E', 'R', 'R', '!' }
 )
 
+func readResponse(rw io.ReadWriter, responseLen int) ([]byte, error) {
+	buf := make([]byte, responseLen)
+	atLeast := len(ResponseErr)
+
+	for total := 0; total < responseLen; {
+		n, err := io.ReadAtLeast(rw, buf[total:], atLeast)
+		if err != nil {
+			return nil, err
+		}
+		total += n
+		atLeast = responseLen - total
+
+		if total >= len(ResponseErr) {
+			if bytes.HasPrefix(buf, ResponseErr[:]) {
+				return nil, fmt.Errorf("received error response")
+			} else if bytes.HasPrefix(buf, ResponseErr[:]) {
+				return nil, fmt.Errorf("received unexpected response")
+			}
+		}
+	}
+
+	return buf, nil
+}
+
 type SyncCommand struct {
 
 }
@@ -61,7 +85,7 @@ type ReadCommand struct {
 
 func (c *ReadCommand) Execute(rw io.ReadWriter) error {
 	// Re-use for command and response.
-	buf := make([]byte, len(OpcodeRead) + 4 + 4, len(OpcodeRead) + int(c.Len))
+	buf := make([]byte, len(OpcodeRead) + 4 + 4)
 
 	copy(buf[0:], OpcodeRead[:])
 	binary.LittleEndian.PutUint32(buf[4:], c.Addr)
@@ -74,20 +98,13 @@ func (c *ReadCommand) Execute(rw io.ReadWriter) error {
 		return fmt.Errorf("unexpected write length: %v", n)
 	}
 
-	// Re-slice to full size
-	buf = buf[:cap(buf)]
-
-	n, err = io.ReadFull(rw, buf)
+	resp, err := readResponse(rw, len(ResponseOK) + int(c.Len))
 	if err != nil {
 		return err
 	}
 
-	if !bytes.HasPrefix(buf, ResponseOK[:]) {
-		return fmt.Errorf("received error response")
-	}
-
 	// Slice off the response
-	c.Data = buf[len(ResponseOK):]
+	c.Data = resp[len(ResponseOK):]
 
 	return nil
 }
@@ -112,7 +129,6 @@ func calculateChecksum(data []byte) uint32 {
 }
 
 func (c *CsumCommand) Execute(rw io.ReadWriter) error {
-	// Re-use for command and response.
 	buf := make([]byte, len(OpcodeCsum) + 4 + 4)
 
 	copy(buf[0:], OpcodeCsum[:])
@@ -126,19 +142,12 @@ func (c *CsumCommand) Execute(rw io.ReadWriter) error {
 		return fmt.Errorf("unexpectead write length: %v", n)
 	}
 
-	// Re-slice to single arg
-	buf = buf[:len(ResponseOK) + 4]
-
-	n, err = io.ReadFull(rw, buf)
+	resp, err := readResponse(rw, len(ResponseOK) + 4)
 	if err != nil {
 		return err
 	}
 
-	if !bytes.HasPrefix(buf, ResponseOK[:]) {
-		return fmt.Errorf("received error response")
-	}
-
-	c.Csum = binary.LittleEndian.Uint32(buf[4:])
+	c.Csum = binary.LittleEndian.Uint32(resp[4:])
 
 	return nil
 }
@@ -150,7 +159,6 @@ type CRCCommand struct {
 }
 
 func (c *CRCCommand) Execute(rw io.ReadWriter) error {
-	// Re-use for command and response.
 	buf := make([]byte, len(OpcodeCRC) + 4 + 4)
 
 	copy(buf[0:], OpcodeCRC[:])
@@ -164,19 +172,12 @@ func (c *CRCCommand) Execute(rw io.ReadWriter) error {
 		return fmt.Errorf("unexpectead write length: %v", n)
 	}
 
-	// Re-slice to single arg
-	buf = buf[:len(ResponseOK) + 4]
-
-	n, err = io.ReadFull(rw, buf)
+	resp, err := readResponse(rw, len(ResponseOK) + 4)
 	if err != nil {
 		return err
 	}
 
-	if !bytes.HasPrefix(buf, ResponseOK[:]) {
-		return fmt.Errorf("received error response")
-	}
-
-	c.CRC = binary.LittleEndian.Uint32(buf[4:])
+	c.CRC = binary.LittleEndian.Uint32(resp[4:])
 
 	return nil
 }
@@ -201,13 +202,9 @@ func (c *EraseCommand) Execute(rw io.ReadWriter) error {
 		return fmt.Errorf("unexpectead write length: %v", n)
 	}
 
-	n, err = io.ReadAtLeast(rw, buf[:], len(ResponseOK))
+	_, err = readResponse(rw, len(ResponseOK))
 	if err != nil {
 		return err
-	}
-
-	if !bytes.HasPrefix(buf, ResponseOK[:]) {
-		return fmt.Errorf("received error response")
 	}
 
 	return nil
@@ -235,23 +232,16 @@ func (c *WriteCommand) Execute(rw io.ReadWriter) error {
 		return fmt.Errorf("unexpectead write length: %v", n)
 	}
 
-	// Re-slice to single response arg
-	buf = buf[:len(ResponseOK) + 4]
-
-	n, err = io.ReadFull(rw, buf)
+	resp, err := readResponse(rw, len(ResponseOK) + 4)
 	if err != nil {
 		return err
 	}
 
-	if !bytes.HasPrefix(buf, ResponseOK[:]) {
-		return fmt.Errorf("received error response")
-	}
+	respCRC := binary.LittleEndian.Uint32(resp[4:])
+	calcCRC := crc32.ChecksumIEEE(c.Data)
 
-	response_crc := binary.LittleEndian.Uint32(buf[4:])
-	calc_crc := crc32.ChecksumIEEE(c.Data)
-
-	if response_crc != calc_crc {
-		return fmt.Errorf("CRC mismatch: 0x%08x vs 0x%08x", response_crc, calc_crc)
+	if respCRC != calcCRC {
+		return fmt.Errorf("CRC mismatch: 0x%08x vs 0x%08x", respCRC, calcCRC)
 	}
 
 	return nil
@@ -272,7 +262,6 @@ func NewSealCommand(addr uint32, data []byte) *SealCommand {
 }
 
 func (c *SealCommand) Execute(rw io.ReadWriter) error {
-	// Re-use for command and response.
 	buf := make([]byte, len(OpcodeSeal) + 4 + 4 + 4)
 
 	copy(buf[0:], OpcodeSeal[:])
@@ -287,16 +276,9 @@ func (c *SealCommand) Execute(rw io.ReadWriter) error {
 		return fmt.Errorf("unexpectead write length: %v", n)
 	}
 
-	// Re-slice to single arg
-	buf = buf[:len(ResponseOK)]
-
-	n, err = io.ReadFull(rw, buf)
+	_, err = readResponse(rw, len(ResponseOK))
 	if err != nil {
 		return err
-	}
-
-	if !bytes.HasPrefix(buf, ResponseOK[:]) {
-		return fmt.Errorf("received error response")
 	}
 
 	return nil
@@ -333,8 +315,7 @@ type InfoCommand struct {
 }
 
 func (c *InfoCommand) Execute(rw io.ReadWriter) error {
-	// Re-use for command and response.
-	buf := make([]byte, len(OpcodeInfo), len(OpcodeInfo) + (4 * 5))
+	buf := make([]byte, len(OpcodeInfo))
 
 	copy(buf[0:], OpcodeInfo[:])
 
@@ -345,23 +326,16 @@ func (c *InfoCommand) Execute(rw io.ReadWriter) error {
 		return fmt.Errorf("unexpectead write length: %v", n)
 	}
 
-	// Re-slice to response args
-	buf = buf[:len(ResponseOK) + (4 * 5)]
-
-	n, err = io.ReadFull(rw, buf)
+	resp, err := readResponse(rw, len(ResponseOK) + (4 * 5))
 	if err != nil {
 		return err
 	}
 
-	if !bytes.HasPrefix(buf, ResponseOK[:]) {
-		return fmt.Errorf("received error response")
-	}
-
-	c.FlashAddr = binary.LittleEndian.Uint32(buf[4:])
-	c.FlashSize = binary.LittleEndian.Uint32(buf[8:])
-	c.EraseSize = binary.LittleEndian.Uint32(buf[12:])
-	c.WriteSize = binary.LittleEndian.Uint32(buf[16:])
-	c.MaxDataLen = binary.LittleEndian.Uint32(buf[20:])
+	c.FlashAddr = binary.LittleEndian.Uint32(resp[4:])
+	c.FlashSize = binary.LittleEndian.Uint32(resp[8:])
+	c.EraseSize = binary.LittleEndian.Uint32(resp[12:])
+	c.WriteSize = binary.LittleEndian.Uint32(resp[16:])
+	c.MaxDataLen = binary.LittleEndian.Uint32(resp[20:])
 
 	return nil
 }
