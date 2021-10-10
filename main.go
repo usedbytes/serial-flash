@@ -234,14 +234,12 @@ func (c *WriteCommand) Execute(rw io.ReadWriter) error {
 	binary.LittleEndian.PutUint32(buf[8:], c.Len)
 	copy(buf[12:], c.Data)
 
-	fmt.Println("writing")
 	n, err := rw.Write(buf)
 	if err != nil {
 		return err
 	} else if n != len(buf) {
 		return fmt.Errorf("unexpectead write length: %v", n)
 	}
-	fmt.Println("writing done")
 
 	// Re-slice to single response arg
 	buf = buf[:len(ResponseOK) + 4]
