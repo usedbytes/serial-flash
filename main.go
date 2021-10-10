@@ -87,8 +87,15 @@ func run() error {
 		Data: data,
 	}
 
-	fmt.Println("Programming...")
-	err = program.Program(rw, img)
+	prog := make(chan program.ProgressReport)
+
+	go func() {
+		for p := range prog {
+			fmt.Println(p.Stage, p.Progress, p.Max)
+		}
+	}()
+
+	err = program.Program(rw, img, prog)
 	if err != nil {
 		return err
 	}
@@ -97,7 +104,6 @@ func run() error {
 		Addr: img.Addr,
 	}
 
-	fmt.Println("Jumping...")
 	err = gc.Execute(rw)
 	if err != nil {
 		return err
