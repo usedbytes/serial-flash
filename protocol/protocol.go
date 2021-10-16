@@ -5,6 +5,7 @@ package protocol
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"hash/crc32"
 	"io"
@@ -24,6 +25,8 @@ var (
 	ResponseOK    [4]byte = [4]byte{ 'O', 'K', 'O', 'K' }
 	ResponseErr   [4]byte = [4]byte{ 'E', 'R', 'R', '!' }
 )
+
+var ErrNotSynced error = errors.New("not synced")
 
 func readResponse(rw io.ReadWriter, responseLen int) ([]byte, error) {
 	buf := make([]byte, responseLen)
@@ -71,7 +74,7 @@ func (c *SyncCommand) Execute(rw io.ReadWriter) error {
 	}
 
 	if !bytes.HasSuffix(resp[:n], ResponseSync[:]) {
-		return fmt.Errorf("not synced")
+		return ErrNotSynced
 	}
 
 	return nil

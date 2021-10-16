@@ -3,6 +3,7 @@
 package program
 
 import (
+	"errors"
 	"fmt"
 	"io"
 
@@ -48,6 +49,8 @@ func sync(rw io.ReadWriter, progress chan<- ProgressReport) error {
 		reportProgress(progress, "Synchronising", i + 1, maxSyncAttempts)
 		if err == nil {
 			return nil
+		} else if !errors.Is(err, protocol.ErrNotSynced) {
+			return err
 		}
 	}
 
