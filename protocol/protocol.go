@@ -65,7 +65,7 @@ func (c *SyncCommand) Execute(rw io.ReadWriter) error {
 	if err != nil {
 		return err
 	} else if n != len(OpcodeSync) {
-		return fmt.Errorf("unexpectead write length: %v", n)
+		return fmt.Errorf("unexpected write length: %v", n)
 	}
 
 	n, err = io.ReadAtLeast(rw, resp[:], len(ResponseSync))
@@ -142,7 +142,7 @@ func (c *CsumCommand) Execute(rw io.ReadWriter) error {
 	if err != nil {
 		return err
 	} else if n != len(OpcodeCsum) + 4 + 4 {
-		return fmt.Errorf("unexpectead write length: %v", n)
+		return fmt.Errorf("unexpected write length: %v", n)
 	}
 
 	resp, err := readResponse(rw, len(ResponseOK) + 4)
@@ -172,7 +172,7 @@ func (c *CRCCommand) Execute(rw io.ReadWriter) error {
 	if err != nil {
 		return err
 	} else if n != len(OpcodeCRC) + 4 + 4 {
-		return fmt.Errorf("unexpectead write length: %v", n)
+		return fmt.Errorf("unexpected write length: %v", n)
 	}
 
 	resp, err := readResponse(rw, len(ResponseOK) + 4)
@@ -202,7 +202,7 @@ func (c *EraseCommand) Execute(rw io.ReadWriter) error {
 	if err != nil {
 		return err
 	} else if n != len(OpcodeErase) + 4 + 4 {
-		return fmt.Errorf("unexpectead write length: %v", n)
+		return fmt.Errorf("unexpected write length: %v", n)
 	}
 
 	_, err = readResponse(rw, len(ResponseOK))
@@ -232,7 +232,7 @@ func (c *WriteCommand) Execute(rw io.ReadWriter) error {
 	if err != nil {
 		return err
 	} else if n != len(buf) {
-		return fmt.Errorf("unexpectead write length: %v", n)
+		return fmt.Errorf("unexpected write length: %v", n)
 	}
 
 	resp, err := readResponse(rw, len(ResponseOK) + 4)
@@ -276,7 +276,7 @@ func (c *SealCommand) Execute(rw io.ReadWriter) error {
 	if err != nil {
 		return err
 	} else if n != len(OpcodeSeal) + 4 + 4 + 4 {
-		return fmt.Errorf("unexpectead write length: %v", n)
+		return fmt.Errorf("unexpected write length: %v", n)
 	}
 
 	_, err = readResponse(rw, len(ResponseOK))
@@ -301,7 +301,7 @@ func (c *GoCommand) Execute(rw io.ReadWriter) error {
 	if err != nil {
 		return err
 	} else if n != len(buf) {
-		return fmt.Errorf("unexpectead write length: %v", n)
+		return fmt.Errorf("unexpected write length: %v", n)
 	}
 
 	// Fire and forget
@@ -326,7 +326,7 @@ func (c *InfoCommand) Execute(rw io.ReadWriter) error {
 	if err != nil {
 		return err
 	} else if n != len(OpcodeInfo) {
-		return fmt.Errorf("unexpectead write length: %v", n)
+		return fmt.Errorf("unexpected write length: %v", n)
 	}
 
 	resp, err := readResponse(rw, len(ResponseOK) + (4 * 5))
