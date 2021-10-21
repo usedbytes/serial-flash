@@ -86,16 +86,22 @@ func Program(rw io.ReadWriter, img *Image, progress chan<- ProgressReport) error
 		return fmt.Errorf("image of %d bytes doesn't fit in flash at 0x%08x", len(data), img.Addr)
 	}
 
-	reportProgress(progress, "Erasing", 0, 1)
-	ec := &protocol.EraseCommand{
-		Addr: img.Addr,
-		Len: align(uint32(len(data)), ic.EraseSize),
-	}
+	// The protocol allows for larger erasures, but this way each individual
+	// command takes less time, meaning transports don't time out
+	eraseLen := int(align(uint32(len(data)), ic.EraseSize))
+	reportProgress(progress, "Erasing", 0, eraseLen)
+	for start := uint32(0); start < uint32(eraseLen); start += ic.EraseSize {
+		end := start + ic.EraseSize
 
-	err = ec.Execute(rw)
-	reportProgress(progress, "Erasing", 1, 1)
-	if err != nil {
-		return fmt.Errorf("erase: %v", err)
+		ec := &protocol.EraseCommand{
+			Addr: img.Addr + start,
+			Len: ic.EraseSize,
+		}
+		err = ec.Execute(rw)
+		reportProgress(progress, "Erasing", int(end), eraseLen)
+		if err != nil {
+			return fmt.Errorf("erase: %v", err)
+		}
 	}
 
 	reportProgress(progress, "Writing", 0, len(data))
