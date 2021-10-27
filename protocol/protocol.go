@@ -43,7 +43,7 @@ func readResponse(rw io.ReadWriter, responseLen int) ([]byte, error) {
 		if total >= len(ResponseErr) {
 			if bytes.HasPrefix(buf, ResponseErr[:]) {
 				return nil, fmt.Errorf("received error response")
-			} else if bytes.HasPrefix(buf, ResponseErr[:]) {
+			} else if !bytes.HasPrefix(buf, ResponseOK[:]) {
 				return nil, fmt.Errorf("received unexpected response")
 			}
 		}
