@@ -82,7 +82,11 @@ func Program(rw io.ReadWriter, img *Image, progress chan<- ProgressReport) error
 	pad := align(uint32(len(img.Data)), ic.WriteSize) - uint32(len(img.Data))
 	data := append(img.Data, make([]byte, pad)...)
 
-	if (img.Addr < ic.FlashAddr) || (img.Addr + uint32(len(data)) > ic.FlashAddr + ic.FlashSize) {
+	if img.Addr < ic.FlashAddr {
+		return fmt.Errorf("image load address too low: 0x%08x < 0x%08x", img.Addr, ic.FlashAddr)
+	}
+
+	if img.Addr + uint32(len(data)) > ic.FlashAddr + ic.FlashSize {
 		return fmt.Errorf("image of %d bytes doesn't fit in flash at 0x%08x", len(data), img.Addr)
 	}
 
