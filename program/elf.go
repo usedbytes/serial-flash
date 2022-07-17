@@ -13,7 +13,7 @@ const (
 type InFlashFunc func(addr, size uint64) bool
 
 func DefaultInFlashFunc(addr, size uint64) bool {
-	return (addr >= FlashBase) && (addr + size <= FlashBase + FlashSize)
+	return (addr >= FlashBase) && (addr+size <= FlashBase+FlashSize)
 }
 
 type chunk struct {
@@ -28,7 +28,7 @@ func (p byPAddr) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
 func (p byPAddr) Less(i, j int) bool { return p[i].PAddr < p[j].PAddr }
 
 func inProg(vaddr, size uint64, prog *elf.Prog) bool {
-	return (vaddr >= prog.Vaddr) && (vaddr + size <= (prog.Vaddr + prog.Memsz))
+	return (vaddr >= prog.Vaddr) && (vaddr+size <= (prog.Vaddr + prog.Memsz))
 }
 
 func LoadELF(fname string, inFlash InFlashFunc) (*Image, error) {
@@ -55,7 +55,7 @@ func LoadELF(fname string, inFlash InFlashFunc) (*Image, error) {
 
 				chunk := &chunk{
 					PAddr: prog.Paddr + progOffset,
-					Data: data,
+					Data:  data,
 				}
 				chunks = append(chunks, chunk)
 			}
@@ -67,7 +67,7 @@ func LoadELF(fname string, inFlash InFlashFunc) (*Image, error) {
 	minPAddr := chunks[0].PAddr
 	maxPAddr := chunks[len(chunks)-1].PAddr + uint64(len(chunks[len(chunks)-1].Data))
 
-	data := make([]byte, maxPAddr - minPAddr)
+	data := make([]byte, maxPAddr-minPAddr)
 
 	for _, c := range chunks {
 		copy(data[c.PAddr-minPAddr:], c.Data)

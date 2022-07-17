@@ -54,7 +54,6 @@ func readResponse(rw io.ReadWriter, responseLen int) ([]byte, error) {
 }
 
 type SyncCommand struct {
-
 }
 
 func (c *SyncCommand) Execute(rw io.ReadWriter) error {
@@ -97,7 +96,7 @@ type ReadCommand struct {
 
 func (c *ReadCommand) Execute(rw io.ReadWriter) error {
 	// Re-use for command and response.
-	buf := make([]byte, len(OpcodeRead) + 4 + 4)
+	buf := make([]byte, len(OpcodeRead)+4+4)
 
 	copy(buf[0:], OpcodeRead[:])
 	binary.LittleEndian.PutUint32(buf[4:], c.Addr)
@@ -106,11 +105,11 @@ func (c *ReadCommand) Execute(rw io.ReadWriter) error {
 	n, err := rw.Write(buf)
 	if err != nil {
 		return err
-	} else if n != len(OpcodeRead) + 4 + 4 {
+	} else if n != len(OpcodeRead)+4+4 {
 		return fmt.Errorf("unexpected write length: %v", n)
 	}
 
-	resp, err := readResponse(rw, len(ResponseOK) + int(c.Len))
+	resp, err := readResponse(rw, len(ResponseOK)+int(c.Len))
 	if err != nil {
 		return err
 	}
@@ -133,7 +132,7 @@ func calculateChecksum(data []byte) uint32 {
 	copy(buf, data)
 
 	result := uint32(0)
-	for i := 0; i < alignedLen; i+=4 {
+	for i := 0; i < alignedLen; i += 4 {
 		result += binary.LittleEndian.Uint32(buf[i:])
 	}
 
@@ -141,7 +140,7 @@ func calculateChecksum(data []byte) uint32 {
 }
 
 func (c *CsumCommand) Execute(rw io.ReadWriter) error {
-	buf := make([]byte, len(OpcodeCsum) + 4 + 4)
+	buf := make([]byte, len(OpcodeCsum)+4+4)
 
 	copy(buf[0:], OpcodeCsum[:])
 	binary.LittleEndian.PutUint32(buf[4:], c.Addr)
@@ -150,11 +149,11 @@ func (c *CsumCommand) Execute(rw io.ReadWriter) error {
 	n, err := rw.Write(buf)
 	if err != nil {
 		return err
-	} else if n != len(OpcodeCsum) + 4 + 4 {
+	} else if n != len(OpcodeCsum)+4+4 {
 		return fmt.Errorf("unexpected write length: %v", n)
 	}
 
-	resp, err := readResponse(rw, len(ResponseOK) + 4)
+	resp, err := readResponse(rw, len(ResponseOK)+4)
 	if err != nil {
 		return err
 	}
@@ -167,11 +166,11 @@ func (c *CsumCommand) Execute(rw io.ReadWriter) error {
 type CRCCommand struct {
 	Addr uint32
 	Len  uint32
-	CRC uint32
+	CRC  uint32
 }
 
 func (c *CRCCommand) Execute(rw io.ReadWriter) error {
-	buf := make([]byte, len(OpcodeCRC) + 4 + 4)
+	buf := make([]byte, len(OpcodeCRC)+4+4)
 
 	copy(buf[0:], OpcodeCRC[:])
 	binary.LittleEndian.PutUint32(buf[4:], c.Addr)
@@ -180,11 +179,11 @@ func (c *CRCCommand) Execute(rw io.ReadWriter) error {
 	n, err := rw.Write(buf)
 	if err != nil {
 		return err
-	} else if n != len(OpcodeCRC) + 4 + 4 {
+	} else if n != len(OpcodeCRC)+4+4 {
 		return fmt.Errorf("unexpected write length: %v", n)
 	}
 
-	resp, err := readResponse(rw, len(ResponseOK) + 4)
+	resp, err := readResponse(rw, len(ResponseOK)+4)
 	if err != nil {
 		return err
 	}
@@ -201,7 +200,7 @@ type EraseCommand struct {
 
 func (c *EraseCommand) Execute(rw io.ReadWriter) error {
 	// Re-use for command and response.
-	buf := make([]byte, len(OpcodeErase) + 4 + 4)
+	buf := make([]byte, len(OpcodeErase)+4+4)
 
 	copy(buf[0:], OpcodeErase[:])
 	binary.LittleEndian.PutUint32(buf[4:], c.Addr)
@@ -210,7 +209,7 @@ func (c *EraseCommand) Execute(rw io.ReadWriter) error {
 	n, err := rw.Write(buf)
 	if err != nil {
 		return err
-	} else if n != len(OpcodeErase) + 4 + 4 {
+	} else if n != len(OpcodeErase)+4+4 {
 		return fmt.Errorf("unexpected write length: %v", n)
 	}
 
@@ -230,7 +229,7 @@ type WriteCommand struct {
 
 func (c *WriteCommand) Execute(rw io.ReadWriter) error {
 	// Re-use for command and response.
-	buf := make([]byte, len(OpcodeWrite) + 4 + 4 + len(c.Data))
+	buf := make([]byte, len(OpcodeWrite)+4+4+len(c.Data))
 
 	copy(buf[0:], OpcodeWrite[:])
 	binary.LittleEndian.PutUint32(buf[4:], c.Addr)
@@ -244,7 +243,7 @@ func (c *WriteCommand) Execute(rw io.ReadWriter) error {
 		return fmt.Errorf("unexpected write length: %v", n)
 	}
 
-	resp, err := readResponse(rw, len(ResponseOK) + 4)
+	resp, err := readResponse(rw, len(ResponseOK)+4)
 	if err != nil {
 		return err
 	}
@@ -262,19 +261,19 @@ func (c *WriteCommand) Execute(rw io.ReadWriter) error {
 type SealCommand struct {
 	Addr uint32
 	Len  uint32
-	CRC uint32
+	CRC  uint32
 }
 
 func NewSealCommand(addr uint32, data []byte) *SealCommand {
 	return &SealCommand{
 		Addr: addr,
-		Len: uint32(len(data)),
-		CRC: crc32.ChecksumIEEE(data),
+		Len:  uint32(len(data)),
+		CRC:  crc32.ChecksumIEEE(data),
 	}
 }
 
 func (c *SealCommand) Execute(rw io.ReadWriter) error {
-	buf := make([]byte, len(OpcodeSeal) + 4 + 4 + 4)
+	buf := make([]byte, len(OpcodeSeal)+4+4+4)
 
 	copy(buf[0:], OpcodeSeal[:])
 	binary.LittleEndian.PutUint32(buf[4:], c.Addr)
@@ -284,7 +283,7 @@ func (c *SealCommand) Execute(rw io.ReadWriter) error {
 	n, err := rw.Write(buf)
 	if err != nil {
 		return err
-	} else if n != len(OpcodeSeal) + 4 + 4 + 4 {
+	} else if n != len(OpcodeSeal)+4+4+4 {
 		return fmt.Errorf("unexpected write length: %v", n)
 	}
 
@@ -301,7 +300,7 @@ type GoCommand struct {
 }
 
 func (c *GoCommand) Execute(rw io.ReadWriter) error {
-	buf := make([]byte, len(OpcodeGo) + 4)
+	buf := make([]byte, len(OpcodeGo)+4)
 
 	copy(buf[0:], OpcodeGo[:])
 	binary.LittleEndian.PutUint32(buf[4:], c.Addr)
@@ -338,7 +337,7 @@ func (c *InfoCommand) Execute(rw io.ReadWriter) error {
 		return fmt.Errorf("unexpected write length: %v", n)
 	}
 
-	resp, err := readResponse(rw, len(ResponseOK) + (4 * 5))
+	resp, err := readResponse(rw, len(ResponseOK)+(4*5))
 	if err != nil {
 		return err
 	}

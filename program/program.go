@@ -31,9 +31,9 @@ func reportProgress(reportChan chan<- ProgressReport, stage string, progress int
 	}
 
 	reportChan <- ProgressReport{
-		Stage: stage,
+		Stage:    stage,
 		Progress: progress,
-		Max: max,
+		Max:      max,
 	}
 }
 
@@ -46,7 +46,7 @@ func sync(rw io.ReadWriter, progress chan<- ProgressReport) error {
 		var sc protocol.SyncCommand
 		err = (&sc).Execute(rw)
 
-		reportProgress(progress, "Synchronising", i + 1, maxSyncAttempts)
+		reportProgress(progress, "Synchronising", i+1, maxSyncAttempts)
 		if err == nil {
 			return nil
 		} else if !errors.Is(err, protocol.ErrNotSynced) {
@@ -72,7 +72,7 @@ func Program(rw io.ReadWriter, img *Image, progress chan<- ProgressReport) error
 	}
 
 	reportProgress(progress, "Querying device info", 0, 1)
-	ic := &protocol.InfoCommand{ }
+	ic := &protocol.InfoCommand{}
 	err = ic.Execute(rw)
 	reportProgress(progress, "Querying device info", 1, 1)
 	if err != nil {
@@ -86,7 +86,7 @@ func Program(rw io.ReadWriter, img *Image, progress chan<- ProgressReport) error
 		return fmt.Errorf("image load address too low: 0x%08x < 0x%08x", img.Addr, ic.FlashAddr)
 	}
 
-	if img.Addr + uint32(len(data)) > ic.FlashAddr + ic.FlashSize {
+	if img.Addr+uint32(len(data)) > ic.FlashAddr+ic.FlashSize {
 		return fmt.Errorf("image of %d bytes doesn't fit in flash at 0x%08x", len(data), img.Addr)
 	}
 
@@ -99,7 +99,7 @@ func Program(rw io.ReadWriter, img *Image, progress chan<- ProgressReport) error
 
 		ec := &protocol.EraseCommand{
 			Addr: img.Addr + start,
-			Len: ic.EraseSize,
+			Len:  ic.EraseSize,
 		}
 		err = ec.Execute(rw)
 		reportProgress(progress, "Erasing", int(end), eraseLen)
@@ -117,7 +117,7 @@ func Program(rw io.ReadWriter, img *Image, progress chan<- ProgressReport) error
 
 		wc := &protocol.WriteCommand{
 			Addr: img.Addr + start,
-			Len: end - start,
+			Len:  end - start,
 			Data: data[start:end],
 		}
 		err = wc.Execute(rw)

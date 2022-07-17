@@ -9,14 +9,14 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
-	"time"
 	"strings"
+	"time"
 
-	tty "github.com/jacobsa/go-serial/serial"
 	"github.com/cheggaaa/pb"
+	tty "github.com/jacobsa/go-serial/serial"
 
-	"github.com/usedbytes/serial-flash/protocol"
 	"github.com/usedbytes/serial-flash/program"
+	"github.com/usedbytes/serial-flash/protocol"
 )
 
 func align(val, to uint32) uint32 {
@@ -82,11 +82,11 @@ func run() error {
 		rw = conn
 	} else {
 		options := tty.OpenOptions{
-			PortName: port,
-			BaudRate: 921600,
-			DataBits: 8,
-			StopBits: 1,
-			MinimumReadSize: 1,
+			PortName:              port,
+			BaudRate:              921600,
+			DataBits:              8,
+			StopBits:              1,
+			MinimumReadSize:       1,
 			InterCharacterTimeout: 100,
 		}
 
@@ -140,7 +140,6 @@ func run() error {
 	if err != nil {
 		return err
 	}
-
 
 	gc := &protocol.GoCommand{
 		Addr: img.Addr,

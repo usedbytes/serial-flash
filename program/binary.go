@@ -1,8 +1,8 @@
 package program
 
 import (
-	"os"
 	"io"
+	"os"
 )
 
 func LoadBin(fname string, base uint32) (*Image, error) {
