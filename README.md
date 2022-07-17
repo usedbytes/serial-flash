@@ -32,6 +32,7 @@ You can also build it without installing:
 ```
 git clone https://github.com/usedbytes/serial-flash
 cd serial-flash
+go get -v .
 go build .
 ./serial-flash tcp:192.168.1.123 app.elf
 ```
