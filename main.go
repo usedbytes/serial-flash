@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"time"
 	"strings"
 
 	tty "github.com/jacobsa/go-serial/serial"
@@ -73,6 +74,10 @@ func run() error {
 		defer conn.Close()
 
 		fmt.Println("Opened connection to", port[len("tcp:"):])
+
+		// FIXME: On Pico-W a packet sent immediately after opening
+		// the connection seems to get lost.
+		time.Sleep(1 * time.Second)
 
 		rw = conn
 	} else {

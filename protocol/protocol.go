@@ -12,18 +12,19 @@ import (
 )
 
 var (
-	OpcodeSync    [4]byte = [4]byte{ 'S', 'Y', 'N', 'C' }
-	OpcodeRead    [4]byte = [4]byte{ 'R', 'E', 'A', 'D' }
-	OpcodeCsum    [4]byte = [4]byte{ 'C', 'S', 'U', 'M' }
-	OpcodeCRC     [4]byte = [4]byte{ 'C', 'R', 'C', 'C' }
-	OpcodeErase   [4]byte = [4]byte{ 'E', 'R', 'A', 'S' }
-	OpcodeWrite   [4]byte = [4]byte{ 'W', 'R', 'I', 'T' }
-	OpcodeSeal    [4]byte = [4]byte{ 'S', 'E', 'A', 'L' }
-	OpcodeGo      [4]byte = [4]byte{ 'G', 'O', 'G', 'O' }
-	OpcodeInfo    [4]byte = [4]byte{ 'I', 'N', 'F', 'O' }
-	ResponseSync  [4]byte = [4]byte{ 'P', 'I', 'C', 'O' }
-	ResponseOK    [4]byte = [4]byte{ 'O', 'K', 'O', 'K' }
-	ResponseErr   [4]byte = [4]byte{ 'E', 'R', 'R', '!' }
+	OpcodeSync       [4]byte = [4]byte{'S', 'Y', 'N', 'C'}
+	OpcodeRead       [4]byte = [4]byte{'R', 'E', 'A', 'D'}
+	OpcodeCsum       [4]byte = [4]byte{'C', 'S', 'U', 'M'}
+	OpcodeCRC        [4]byte = [4]byte{'C', 'R', 'C', 'C'}
+	OpcodeErase      [4]byte = [4]byte{'E', 'R', 'A', 'S'}
+	OpcodeWrite      [4]byte = [4]byte{'W', 'R', 'I', 'T'}
+	OpcodeSeal       [4]byte = [4]byte{'S', 'E', 'A', 'L'}
+	OpcodeGo         [4]byte = [4]byte{'G', 'O', 'G', 'O'}
+	OpcodeInfo       [4]byte = [4]byte{'I', 'N', 'F', 'O'}
+	ResponseSync     [4]byte = [4]byte{'P', 'I', 'C', 'O'}
+	ResponseSyncWota [4]byte = [4]byte{'P', 'I', 'C', 'O'}
+	ResponseOK       [4]byte = [4]byte{'O', 'K', 'O', 'K'}
+	ResponseErr      [4]byte = [4]byte{'E', 'R', 'R', '!'}
 )
 
 var ErrNotSynced error = errors.New("not synced")
@@ -73,11 +74,19 @@ func (c *SyncCommand) Execute(rw io.ReadWriter) error {
 		return err
 	}
 
-	if !bytes.HasSuffix(resp[:n], ResponseSync[:]) {
-		return ErrNotSynced
+	// Different responses for picowota and rp2040_serial_bootloader
+	validSyncResponses := [][4]byte{
+		ResponseSync,
+		ResponseSyncWota,
 	}
 
-	return nil
+	for _, r := range validSyncResponses {
+		if bytes.HasSuffix(resp[:n], r[:]) {
+			return nil
+		}
+	}
+
+	return ErrNotSynced
 }
 
 type ReadCommand struct {
