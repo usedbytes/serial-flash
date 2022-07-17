@@ -22,7 +22,7 @@ var (
 	OpcodeGo         [4]byte = [4]byte{'G', 'O', 'G', 'O'}
 	OpcodeInfo       [4]byte = [4]byte{'I', 'N', 'F', 'O'}
 	ResponseSync     [4]byte = [4]byte{'P', 'I', 'C', 'O'}
-	ResponseSyncWota [4]byte = [4]byte{'P', 'I', 'C', 'O'}
+	ResponseSyncWota [4]byte = [4]byte{'W', 'O', 'T', 'A'}
 	ResponseOK       [4]byte = [4]byte{'O', 'K', 'O', 'K'}
 	ResponseErr      [4]byte = [4]byte{'E', 'R', 'R', '!'}
 )
